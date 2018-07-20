@@ -44,15 +44,15 @@ use mentat_core::{
     attribute,
     Attribute,
     AttributeBitFlags,
+    AttributeMap,
     Entid,
     FromMicros,
     IdentMap,
     Schema,
-    AttributeMap,
-    TypedValue,
     ToMicros,
-    ValueType,
+    TypedValue,
     ValueRc,
+    ValueType,
 };
 
 use errors::{
@@ -1208,7 +1208,7 @@ impl PartitionMap {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     extern crate env_logger;
 
     use std::borrow::{
