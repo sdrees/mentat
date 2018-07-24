@@ -73,7 +73,7 @@ matrix:
         - source $HOME/.cargo/env
         - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         # make standalone NDK
-        - ./scripts/create_standalone_ndk.sh && mkdir ./.cargo && cp cargo-config.toml ./.cargo/config || travis_terminate 1
+        - ./scripts/create_standalone_ndk.sh && cp cargo-config.toml ./.cargo/config || travis_terminate 1
         - cargo build --target aarch64-linux-android --release
       before_script:
         # Start adbd, wait for device connected and show android serial to avoid heavy tasks in parallel
