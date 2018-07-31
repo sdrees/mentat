@@ -169,6 +169,10 @@ pub mod vocabulary;
 
 #[cfg(feature = "syncable")]
 pub mod sync;
+#[cfg(feature = "syncable")]
+pub use mentat_tolstoy::{
+    SyncReport,
+};
 
 pub use query_builder::{
     QueryBuilder,
@@ -184,7 +188,6 @@ pub use mentat_transaction::{
     InProgress,
     Pullable,
     Queryable,
-    Syncable,
 };
 
 pub use store::{

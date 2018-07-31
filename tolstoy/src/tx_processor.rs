@@ -11,10 +11,6 @@ use std::iter::Peekable;
 
 use rusqlite;
 
-use errors::{
-    Result,
-};
-
 use mentat_db::{
     TypedSQLValue,
 };
@@ -24,19 +20,20 @@ use mentat_core::{
     TypedValue,
 };
 
-#[derive(Debug,Clone,Serialize,Deserialize)]
-pub struct TxPart {
-    pub e: Entid,
-    pub a: Entid,
-    pub v: TypedValue,
-    pub tx: Entid,
-    pub added: bool,
-}
+use errors::{
+    Result,
+};
+use types::{
+    TxPart,
+};
 
-pub trait TxReceiver {
-    fn tx<T>(&mut self, tx_id: Entid, d: &mut T) -> Result<()>
-        where T: Iterator<Item=TxPart>;
-    fn done(&mut self) -> Result<()>;
+/// Implementors must specify type of the "receiver report" which
+/// they will produce once processor is finished.
+pub trait TxReceiver<RR> {
+    /// Called for each transaction, with an iterator over its datoms.
+    fn tx<T: Iterator<Item=TxPart>>(&mut self, tx_id: Entid, d: &mut T) -> Result<()>;
+    /// Called once processor is finished, consuming this receiver and producing a report.
+    fn done(self) -> RR;
 }
 
 pub struct Processor {}
@@ -101,6 +98,7 @@ where T: Sized + Iterator<Item=Result<TxPart>> + 't {
                 Err(_) => None,
                 Ok(datom) => {
                     Some(TxPart {
+                        partitions: None,
                         e: datom.e,
                         a: datom.a,
                         v: datom.v.clone(),
@@ -118,17 +116,19 @@ where T: Sized + Iterator<Item=Result<TxPart>> + 't {
 
 fn to_tx_part(row: &rusqlite::Row) -> Result<TxPart> {
     Ok(TxPart {
-        e: row.get(0),
-        a: row.get(1),
-        v: TypedValue::from_sql_value_pair(row.get(2), row.get(3))?,
-        tx: row.get(4),
-        added: row.get(5),
+        partitions: None,
+        e: row.get_checked(0)?,
+        a: row.get_checked(1)?,
+        v: TypedValue::from_sql_value_pair(row.get_checked(2)?, row.get_checked(3)?)?,
+        tx: row.get_checked(4)?,
+        added: row.get_checked(5)?,
     })
 }
 
 impl Processor {
-    pub fn process<R>(sqlite: &rusqlite::Transaction, from_tx: Option<Entid>, receiver: &mut R) -> Result<()>
-    where R: TxReceiver {
+    pub fn process<RR, R: TxReceiver<RR>>
+        (sqlite: &rusqlite::Transaction, from_tx: Option<Entid>, mut receiver: R) -> Result<RR> {
+
         let tx_filter = match from_tx {
             Some(tx) => format!(" WHERE tx > {} ", tx),
             None => format!("")
@@ -137,6 +137,10 @@ impl Processor {
         let mut stmt = sqlite.prepare(&select_query)?;
 
         let mut rows = stmt.query_and_then(&[], to_tx_part)?.peekable();
+
+        // Walk the transaction table, keeping track of the current "tx".
+        // Whenever "tx" changes, construct a datoms iterator and pass it to the receiver.
+        // NB: this logic depends on data coming out of the rows iterator to be sorted by "tx".
         let mut current_tx = None;
         while let Some(row) = rows.next() {
             let datom = row?;
@@ -160,7 +164,8 @@ impl Processor {
                 }
             }
         }
-        receiver.done()?;
-        Ok(())
+        // Consume the receiver, letting it produce a "receiver report"
+        // as defined by generic type RR.
+        Ok(receiver.done())
     }
 }

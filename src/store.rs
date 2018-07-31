@@ -14,10 +14,6 @@ use std::collections::{
     BTreeMap,
 };
 
-use std::path::{
-    Path,
-};
-
 use std::sync::{
     Arc,
 };
@@ -38,9 +34,6 @@ use mentat_db::{
     TxObserver,
 };
 
-#[cfg(feature = "syncable")]
-use mentat_tolstoy::Syncer;
-
 use mentat_transaction::{
     CacheAction,
     CacheDirection,
@@ -53,11 +46,6 @@ use mentat_transaction::{
 use conn::{
     Conn,
 };
-
-#[cfg(feature = "syncable")]
-use conn::{
-    Syncable,
-}
 
 use mentat_transaction::errors::{
     Result as TransactionResult,
@@ -74,6 +62,11 @@ use mentat_transaction::query::{
 
 #[cfg(feature = "syncable")]
 use sync::Syncable;
+
+#[cfg(feature = "syncable")]
+use mentat_tolstoy::{
+    SyncReport,
+};
 
 /// A convenience wrapper around a single SQLite connection and a Conn. This is suitable
 /// for applications that don't require complex connection management.
@@ -96,6 +89,14 @@ impl Store {
     pub fn transact(&mut self, transaction: &str) -> Result<TxReport> {
         let mut ip = self.begin_transaction()?;
         let report = ip.transact(transaction)?;
+        ip.commit()?;
+        Ok(report)
+    }
+
+    #[cfg(feature = "syncable")]
+    pub fn sync(&mut self, server_uri: &String, user_uuid: &String) -> Result<SyncReport> {
+        let mut ip = self.begin_transaction()?;
+        let report = ip.sync(server_uri, user_uuid)?;
         ip.commit()?;
         Ok(report)
     }
@@ -215,27 +216,19 @@ impl Pullable for Store {
     }
 }
 
-#[cfg(feature = "syncable")]
-use uuid::Uuid;
-
-#[cfg(feature = "syncable")]
-impl Syncable for Store {
-    fn sync(&mut self, server_uri: &String, user_uuid: &String) -> Result<()> {
-        let uuid = Uuid::parse_str(&user_uuid).map_err(|_| MentatError::BadUuid(user_uuid.clone()))?;
-        Ok(Syncer::flow(&mut self.sqlite, server_uri, &uuid)?)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     extern crate time;
 
+    use uuid::Uuid;
+
     use std::collections::{
         BTreeSet,
     };
     use std::path::{
+        Path,
         PathBuf,
     };
     use std::sync::mpsc;
@@ -245,8 +238,6 @@ mod tests {
     use std::time::{
         Duration,
     };
-
-    use uuid::Uuid;
 
     use mentat_db::cache::{
         SQLiteAttributeCache,

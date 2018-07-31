@@ -13,8 +13,10 @@
 use std; // To refer to std::result::Result.
 
 use std::collections::BTreeSet;
+use std::error::Error;
 
 use rusqlite;
+use uuid;
 
 use edn;
 
@@ -94,8 +96,8 @@ pub enum MentatError {
 
     // It would be better to capture the underlying `rusqlite::Error`, but that type doesn't
     // implement many useful traits, including `Clone`, `Eq`, and `PartialEq`.
-    #[fail(display = "SQL error: {}", _0)]
-    RusqliteError(String),
+    #[fail(display = "SQL error: {}, cause: {}", _0, _1)]
+    RusqliteError(String, String),
 
     #[fail(display = "{}", _0)]
     EdnParseError(#[cause] edn::ParseError),
@@ -111,6 +113,9 @@ pub enum MentatError {
 
     #[fail(display = "{}", _0)]
     PullError(#[cause] mentat_query_pull::PullError),
+
+    #[fail(display = "{}", _0)]
+    UuidError(#[cause] uuid::ParseError),
 
     #[fail(display = "{}", _0)]
     SQLError(#[cause] mentat_sql::SQLError),
@@ -131,7 +136,17 @@ impl From<std::io::Error> for MentatError {
 
 impl From<rusqlite::Error> for MentatError {
     fn from(error: rusqlite::Error) -> MentatError {
-        MentatError::RusqliteError(error.to_string())
+        let cause = match error.cause() {
+            Some(e) => e.to_string(),
+            None => "".to_string()
+        };
+        MentatError::RusqliteError(error.to_string(), cause)
+    }
+}
+
+impl From<uuid::ParseError> for MentatError {
+    fn from(error: uuid::ParseError) -> MentatError {
+        MentatError::UuidError(error)
     }
 }
 

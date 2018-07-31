@@ -28,6 +28,9 @@ path = "../core"
 path = "../db"
 features = ["syncable"]
 
+[dependencies.mentat_transaction]
+path = "../transaction"
+
 [dependencies.rusqlite]
 version = "0.13"
 features = ["limits"]

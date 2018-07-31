@@ -8,23 +8,52 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
+extern crate uuid;
+extern crate edn;
 extern crate mentat;
 extern crate mentat_core;
+
+#[macro_use] extern crate log;
+#[macro_use] extern crate mentat_db;
 
 #[cfg(feature = "syncable")]
 extern crate mentat_tolstoy;
 
 #[cfg(feature = "syncable")]
 mod tests {
+    use std::collections::HashMap;
     use std::collections::BTreeMap;
+
+    use std::collections::hash_map::Entry;
+
+    use std::borrow::Borrow;
+
+    use uuid::Uuid;
+
+    use edn;
 
     use mentat::conn::Conn;
 
+    use mentat_db::debug::{
+        TestConn,
+    };
+
     use mentat::new_connection;
+    use mentat_tolstoy::{
+        Tx,
+        TxPart,
+        GlobalTransactionLog,
+        SyncReport,
+        Syncer,
+    };
+
+    use mentat_tolstoy::debug::{
+        parts_to_datoms,
+    };
+
     use mentat_tolstoy::tx_processor::{
         Processor,
         TxReceiver,
-        TxPart,
     };
     use mentat_tolstoy::errors::Result;
     use mentat_core::{
@@ -101,7 +130,7 @@ mod tests {
         let mut conn = Conn::connect(&mut c).expect("Couldn't open DB.");
         {
             let db_tx = c.transaction().expect("db tx");
-            // Don't inspect the bootstrap transaction, but we'd like to see it's there.
+            // Ensure that we see a bootstrap transaction.
             let mut receiver = TxCountingReceiver::new();
             assert_eq!(false, receiver.is_done);
             Processor::process(&db_tx, None, &mut receiver).expect("processor");
@@ -116,7 +145,12 @@ mod tests {
         ]"#).expect("successful transaction").tempids;
         let numba_entity_id = ids.get("s").unwrap();
 
-        let bootstrap_tx;
+        let ids = conn.transact(&mut c, r#"[
+            [:db/add "b" :foo/numba 123]
+        ]"#).expect("successful transaction").tempids;
+        let _asserted_e = ids.get("b").unwrap();
+
+        let first_tx;
         {
             let db_tx = c.transaction().expect("db tx");
             // Expect to see one more transaction of four parts (one for tx datom itself).
@@ -125,10 +159,11 @@ mod tests {
 
             println!("{:#?}", receiver);
 
-            assert_eq!(2, receiver.txes.keys().count());
-            assert_tx_datoms_count(&receiver, 1, 4);
+            // Three transactions: bootstrap, vocab, assertion.
+            assert_eq!(3, receiver.txes.keys().count());
+            assert_tx_datoms_count(&receiver, 2, 2);
 
-            bootstrap_tx = Some(*receiver.txes.keys().nth(0).expect("bootstrap tx"));
+            first_tx = Some(*receiver.txes.keys().nth(1).expect("first non-bootstrap tx"));
         }
 
         let ids = conn.transact(&mut c, r#"[
@@ -142,13 +177,15 @@ mod tests {
             // Expect to see a single two part transaction
             let mut receiver = TestingReceiver::new();
 
-            // Note that we're asking for the bootstrap tx to be skipped by the processor.
-            Processor::process(&db_tx, bootstrap_tx, &mut receiver).expect("processor");
+            // Note that we're asking for the first transacted tx to be skipped by the processor.
+            Processor::process(&db_tx, first_tx, &mut receiver).expect("processor");
 
+            // Vocab, assertion.
             assert_eq!(2, receiver.txes.keys().count());
+            // Assertion datoms.
             assert_tx_datoms_count(&receiver, 1, 2);
 
-            // Inspect the transaction part.
+            // Inspect the assertion.
             let tx_id = receiver.txes.keys().nth(1).expect("tx");
             let datoms = receiver.txes.get(tx_id).expect("datoms");
             let part = datoms.iter().find(|&part| &part.e == asserted_e).expect("to find asserted datom");
@@ -160,4 +197,129 @@ mod tests {
         }
     }
 
+    struct TestRemoteClient {
+        pub head: Uuid,
+        pub chunks: HashMap<Uuid, TxPart>,
+        pub transactions: HashMap<Uuid, Vec<TxPart>>,
+        // Keep transactions in order:
+        pub tx_rowid: HashMap<Uuid, usize>,
+        pub rowid_tx: Vec<Uuid>,
+    }
+
+    impl TestRemoteClient {
+        fn new() -> TestRemoteClient {
+            TestRemoteClient {
+                head: Uuid::nil(),
+                chunks: HashMap::default(),
+                transactions: HashMap::default(),
+                tx_rowid: HashMap::default(),
+                rowid_tx: vec![],
+            }
+        }
+    }
+
+    impl GlobalTransactionLog for TestRemoteClient {
+        fn head(&self) -> Result<Uuid> {
+            Ok(self.head)
+        }
+
+        fn transactions_after(&self, tx: &Uuid) -> Result<Vec<Tx>> {
+            let rowid = self.tx_rowid[tx];
+            let mut txs = vec![];
+            for tx_uuid in &self.rowid_tx[rowid + 1..] {
+                txs.push(Tx {
+                    tx: tx_uuid.clone(),
+                    parts: self.transactions.get(tx_uuid).unwrap().clone(),
+                });
+            }
+            Ok(txs)
+        }
+
+        fn set_head(&mut self, tx: &Uuid) -> Result<()> {
+            self.head = tx.clone();
+            Ok(())
+        }
+
+        fn put_chunk(&mut self, tx: &Uuid, payload: &TxPart) -> Result<()> {
+            match self.chunks.entry(tx.clone()) {
+                Entry::Occupied(_) => panic!("trying to overwrite chunk"),
+                Entry::Vacant(entry) => {
+                    entry.insert(payload.clone());
+                    ()
+                },
+            }
+            Ok(())
+        }
+
+        fn put_transaction(&mut self, tx: &Uuid, _parent_tx: &Uuid, chunk_txs: &Vec<Uuid>) -> Result<()> {
+            let mut parts = vec![];
+            for chunk_tx in chunk_txs {
+                parts.push(self.chunks.get(chunk_tx).unwrap().clone());
+            }
+            self.transactions.insert(tx.clone(), parts);
+            self.rowid_tx.push(tx.clone());
+            self.tx_rowid.insert(tx.clone(), self.rowid_tx.len());
+            Ok(())
+        }
+    }
+
+    // TODO these tests have a problem:
+    // they want to use assert_transact!, but that macro operates over a TestConn,
+    // and we only have a real Conn here.
+    // Adapt the macro, and tests should work!
+
+    // #[test]
+    // fn test_sync() {
+    //     let mut sqlite = new_connection("").unwrap();
+    //     let mut conn = Conn::connect(&mut sqlite).unwrap();
+
+    //     let mut local = conn.begin_transaction(&mut sqlite).expect("begun successfully");
+
+    //     let mut remote_client = TestRemoteClient::new();
+
+    //     // Populate empty server, populate it with a bootstrap transaction.
+    //     assert_eq!(SyncReport::ServerFastForward, Syncer::sync(&mut local, &mut remote_client).expect("sync report"));
+
+    //     // A single (bootstrap) transaction...
+    //     assert_eq!(1, remote_client.transactions.iter().count());
+    //     // ... consisting of 95 parts.
+    //     assert_eq!(95, remote_client.transactions.values().last().unwrap().len());
+    //     // Chunk count matches transaction parts count.
+    //     assert_eq!(95, remote_client.chunks.iter().count());
+
+    //     // Nothing changed locally, nor remotely.
+    //     assert_eq!(SyncReport::NoChanges, Syncer::sync(&mut local, &mut remote_client).expect("sync report"));
+
+    //     assert_transact!(conn, "[
+    //         {:db/ident :person/name
+    //           :db/valueType :db.type/string
+    //           :db/cardinality :db.cardinality/many}]");
+
+    //     assert_transact!(conn, "[{:person/name \"Ivan\"}]");
+
+    //     // Fast-forward server.
+    //     assert_eq!(SyncReport::ServerFastForward, Syncer::sync(&mut local, &mut remote_client).expect("sync report"));
+
+    //     // Uploaded two transactions...
+    //     assert_eq!(3, remote_client.transactions.iter().count());
+    //     // ... first one of 4 parts (three explicit datoms + txInstant assertion),
+    //     let first_tx_parts = remote_client.transactions.get(&remote_client.rowid_tx[1]).unwrap();
+    //     assert_eq!(4, first_tx_parts.len());
+    //     // ... second of 2 parts.
+    //     let second_tx_parts = remote_client.transactions.get(&remote_client.rowid_tx[2]).unwrap();
+    //     assert_eq!(2, second_tx_parts.len());
+
+    //     // TODO improve this matching.
+
+    //     // Compare what was uploaded with our local state.
+    //     assert_matches!(parts_to_datoms(&local.schema, first_tx_parts.to_vec()), "[
+    //         [:person/name :db/ident :person/name 268435457 true]
+    //         [268435457 :db/txInstant ?ms 268435457 true]
+    //         [:person/name :db/valueType 27 268435457 true]
+    //         [:person/name :db/cardinality 34 268435457 true]]");
+
+    //     assert_matches!(parts_to_datoms(&local.schema, second_tx_parts.to_vec()), "[
+    //         [65537 :person/name \"Ivan\" 268435458 true]
+    //         [268435458 :db/txInstant ?ms 268435458 true]]");
+    // }
 }

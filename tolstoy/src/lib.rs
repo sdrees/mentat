@@ -34,18 +34,43 @@ extern crate serde_json;
 #[cfg_attr(test, macro_use)] extern crate mentat_db;
 
 extern crate mentat_core;
+extern crate mentat_transaction;
 extern crate rusqlite;
 extern crate uuid;
 
-#[macro_use]
-pub mod errors;
-pub mod schema;
-pub mod metadata;
-pub mod tx_processor;
-pub mod syncer;
-pub mod tx_mapper;
-pub use syncer::Syncer;
+#[macro_use] pub mod errors;
 pub use errors::{
     TolstoyError,
-    Result,
+};
+
+pub mod bootstrap;
+pub mod metadata;
+pub use metadata::{
+    PartitionsTable,
+    SyncMetadata,
+};
+mod datoms;
+pub mod debug;
+pub mod remote_client;
+pub use remote_client::{
+    RemoteClient,
+};
+pub mod schema;
+pub mod syncer;
+pub use syncer::{
+    Syncer,
+    SyncReport,
+};
+mod tx_uploader;
+pub mod logger;
+pub mod tx_mapper;
+pub use tx_mapper::{
+    TxMapper,
+};
+pub mod tx_processor;
+pub mod types;
+pub use types::{
+    Tx,
+    TxPart,
+    GlobalTransactionLog,
 };

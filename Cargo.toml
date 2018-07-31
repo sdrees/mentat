@@ -33,6 +33,7 @@ failure = "0.1.1"
 failure_derive = "0.1.1"
 lazy_static = "0.2"
 time = "0.1"
+log = "0.4"
 uuid = { version = "0.5", features = ["v4", "serde"] }
 
 [dependencies.rusqlite]
