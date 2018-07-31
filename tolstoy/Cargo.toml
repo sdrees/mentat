@@ -26,6 +26,7 @@ path = "../core"
 
 [dependencies.mentat_db]
 path = "../db"
+features = ["syncable"]
 
 [dependencies.rusqlite]
 version = "0.13"
