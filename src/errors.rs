@@ -29,6 +29,7 @@ use mentat_query_algebrizer;
 use mentat_query_projector;
 use mentat_query_pull;
 use mentat_sql;
+use mentat_transaction;
 
 #[cfg(feature = "syncable")]
 use mentat_tolstoy;
@@ -117,6 +118,9 @@ pub enum MentatError {
     #[cfg(feature = "syncable")]
     #[fail(display = "{}", _0)]
     TolstoyError(#[cause] mentat_tolstoy::TolstoyError),
+
+    #[fail(display = "{}", _0)]
+    TransactionError(#[cause] mentat_transaction::TransactionError),
 }
 
 impl From<std::io::Error> for MentatError {
@@ -171,5 +175,21 @@ impl From<mentat_sql::SQLError> for MentatError {
 impl From<mentat_tolstoy::TolstoyError> for MentatError {
     fn from(error: mentat_tolstoy::TolstoyError) -> MentatError {
         MentatError::TolstoyError(error)
+    }
+}
+
+impl From<mentat_transaction::TransactionError> for MentatError {
+    fn from(error: mentat_transaction::TransactionError) -> MentatError {
+        MentatError::TransactionError(error)
+        // TODO we could also flatten the hierarchy:
+        // match error {
+        //     mentat_transaction::TransactionError::AlgebrizerError(e) => MentatError::AlgebrizerError(e),
+        //     mentat_transaction::TransactionError::ProjectorError(e) => MentatError::ProjectorError(e),
+        //     mentat_transaction::TransactionError::EdnParseError(e) => MentatError::EdnParseError(e),
+        //     mentat_transaction::TransactionError::PullError(e) => MentatError::PullError(e),
+        //     mentat_transaction::TransactionError::SQLError(e) => MentatError::SQLError(e),
+        //     mentat_transaction::TransactionError::DbError(e) => MentatError::DbError(e),
+        //     // ...
+        // }
     }
 }

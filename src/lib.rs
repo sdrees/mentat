@@ -8,8 +8,6 @@
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the
 // specific language governing permissions and limitations under the License.
 
-#![recursion_limit="128"]
-
 #[macro_use]
 extern crate failure_derive;
 extern crate failure;
@@ -28,8 +26,8 @@ extern crate mentat_query;
 extern crate mentat_query_algebrizer;
 extern crate mentat_query_projector;
 extern crate mentat_query_pull;
-extern crate mentat_query_translator;
 extern crate mentat_sql;
+extern crate mentat_transaction;
 
 #[cfg(feature = "syncable")]
 extern crate mentat_tolstoy;
@@ -143,14 +141,14 @@ pub use mentat_query_projector::{
 pub use mentat_query_pull::PullError;
 pub use mentat_sql::SQLError;
 
-pub mod conn;
-pub mod entity_builder;
-pub mod query;
-pub mod query_builder;
-pub mod store;
-pub mod vocabulary;
+pub use mentat_transaction::{
+    Metadata,
+};
 
-pub use query::{
+pub use mentat_transaction::query;
+pub use mentat_transaction::entity_builder;
+
+pub use mentat_transaction::query::{
     IntoResult,
     PlainSymbol,
     QueryExecutionResult,
@@ -164,16 +162,26 @@ pub use query::{
     q_once,
 };
 
+pub mod conn;
+pub mod query_builder;
+pub mod store;
+pub mod vocabulary;
+
+#[cfg(feature = "syncable")]
+pub mod sync;
+
 pub use query_builder::{
     QueryBuilder,
 };
 
 pub use conn::{
+    Conn,
+};
+
+pub use mentat_transaction::{
     CacheAction,
     CacheDirection,
-    Conn,
     InProgress,
-    Metadata,
     Pullable,
     Queryable,
     Syncable,

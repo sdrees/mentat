@@ -16,6 +16,8 @@ extern crate mentat;
 extern crate mentat_core;
 extern crate mentat_db;
 
+extern crate mentat_transaction;
+
 // TODO: when we switch to `failure`, make this more humane.
 extern crate mentat_query_algebrizer;       // For errors.
 extern crate mentat_query_projector;        // For errors.
@@ -60,8 +62,8 @@ use mentat::query::q_uncached;
 
 use mentat::conn::Conn;
 
-use mentat::errors::{
-    MentatError,
+use mentat_transaction::errors::{
+    TransactionError,
 };
 
 #[test]
@@ -234,7 +236,7 @@ fn test_unbound_inputs() {
                              "[:find ?i . :in ?e :where [?e :db/ident ?i]]", inputs);
 
     match results.expect_err("expected unbound variables") {
-        MentatError::UnboundVariables(vars) => {
+        TransactionError::UnboundVariables(vars) => {
             assert_eq!(vars, vec!["?e".to_string()].into_iter().collect());
         },
         _ => panic!("Expected UnboundVariables variant."),
@@ -412,7 +414,7 @@ fn test_fulltext() {
                     ]"#;
     let r = conn.q_once(&mut c, query, None);
     match r.expect_err("expected query to fail") {
-        MentatError::AlgebrizerError(mentat_query_algebrizer::AlgebrizerError::InvalidArgument(PlainSymbol(s), ty, i)) => {
+        TransactionError::AlgebrizerError(mentat_query_algebrizer::AlgebrizerError::InvalidArgument(PlainSymbol(s), ty, i)) => {
             assert_eq!(s, "fulltext");
             assert_eq!(ty, "string");
             assert_eq!(i, 2);
@@ -427,7 +429,7 @@ fn test_fulltext() {
                     [(fulltext $ :foo/fts ?a) [[?x ?val]]]]"#;
     let r = conn.q_once(&mut c, query, None);
     match r.expect_err("expected query to fail") {
-        MentatError::AlgebrizerError(mentat_query_algebrizer::AlgebrizerError::InvalidArgument(PlainSymbol(s), ty, i)) => {
+        TransactionError::AlgebrizerError(mentat_query_algebrizer::AlgebrizerError::InvalidArgument(PlainSymbol(s), ty, i)) => {
             assert_eq!(s, "fulltext");
             assert_eq!(ty, "string");
             assert_eq!(i, 2);
@@ -583,7 +585,7 @@ fn test_aggregates_type_handling() {
     let r = store.q_once(r#"[:find (sum ?v) . :where [_ _ ?v]]"#, None);
     let all_types = ValueTypeSet::any();
     match r.expect_err("expected query to fail") {
-        MentatError::ProjectorError(::mentat_query_projector::errors::ProjectorError::CannotApplyAggregateOperationToTypes(
+        TransactionError::ProjectorError(::mentat_query_projector::errors::ProjectorError::CannotApplyAggregateOperationToTypes(
             SimpleAggregationOp::Sum, types)) => {
                 assert_eq!(types, all_types);
         },
@@ -595,7 +597,7 @@ fn test_aggregates_type_handling() {
                              :where [_ _ ?v] [(type ?v :db.type/instant)]]"#,
                          None);
     match r.expect_err("expected query to fail") {
-        MentatError::ProjectorError(::mentat_query_projector::errors::ProjectorError::CannotApplyAggregateOperationToTypes(
+        TransactionError::ProjectorError(::mentat_query_projector::errors::ProjectorError::CannotApplyAggregateOperationToTypes(
             SimpleAggregationOp::Sum,
             types)) => {
                 assert_eq!(types, ValueTypeSet::of_one(ValueType::Instant));
@@ -1337,7 +1339,7 @@ fn test_aggregation_implicit_grouping() {
                                [?person :foo/is-vegetarian true]
                                [?person :foo/name ?name]]"#, None);
     match res.expect_err("expected query to fail") {
-        MentatError::ProjectorError(::mentat_query_projector::errors::ProjectorError::AmbiguousAggregates(mmc, cc)) => {
+        TransactionError::ProjectorError(::mentat_query_projector::errors::ProjectorError::AmbiguousAggregates(mmc, cc)) => {
             assert_eq!(mmc, 2);
             assert_eq!(cc, 1);
         },

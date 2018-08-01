@@ -41,29 +41,39 @@ use mentat_db::{
 #[cfg(feature = "syncable")]
 use mentat_tolstoy::Syncer;
 
-use conn::{
+use mentat_transaction::{
     CacheAction,
     CacheDirection,
-    Conn,
     InProgress,
     InProgressRead,
     Pullable,
     Queryable,
 };
 
+use conn::{
+    Conn,
+};
+
 #[cfg(feature = "syncable")]
 use conn::{
     Syncable,
+}
+
+use mentat_transaction::errors::{
+    Result as TransactionResult,
 };
 
 use errors::*;
 
-use query::{
+use mentat_transaction::query::{
     PreparedResult,
     QueryExplanation,
     QueryInputs,
     QueryOutput,
 };
+
+#[cfg(feature = "syncable")]
+use sync::Syncable;
 
 /// A convenience wrapper around a single SQLite connection and a Conn. This is suitable
 /// for applications that don't require complex connection management.
@@ -166,7 +176,7 @@ impl Store {
 }
 
 impl Queryable for Store {
-    fn q_once<T>(&self, query: &str, inputs: T) -> Result<QueryOutput>
+    fn q_once<T>(&self, query: &str, inputs: T) -> TransactionResult<QueryOutput>
         where T: Into<Option<QueryInputs>> {
         self.conn.q_once(&self.sqlite, query, inputs)
     }
@@ -176,30 +186,30 @@ impl Queryable for Store {
         self.conn.q_prepare(&self.sqlite, query, inputs)
     }
 
-    fn q_explain<T>(&self, query: &str, inputs: T) -> Result<QueryExplanation>
+    fn q_explain<T>(&self, query: &str, inputs: T) -> TransactionResult<QueryExplanation>
         where T: Into<Option<QueryInputs>> {
         self.conn.q_explain(&self.sqlite, query, inputs)
     }
 
-    fn lookup_values_for_attribute<E>(&self, entity: E, attribute: &edn::Keyword) -> Result<Vec<TypedValue>>
+    fn lookup_values_for_attribute<E>(&self, entity: E, attribute: &edn::Keyword) -> TransactionResult<Vec<TypedValue>>
         where E: Into<Entid> {
         self.conn.lookup_values_for_attribute(&self.sqlite, entity.into(), attribute)
     }
 
-    fn lookup_value_for_attribute<E>(&self, entity: E, attribute: &edn::Keyword) -> Result<Option<TypedValue>>
+    fn lookup_value_for_attribute<E>(&self, entity: E, attribute: &edn::Keyword) -> TransactionResult<Option<TypedValue>>
         where E: Into<Entid> {
         self.conn.lookup_value_for_attribute(&self.sqlite, entity.into(), attribute)
     }
 }
 
 impl Pullable for Store {
-    fn pull_attributes_for_entities<E, A>(&self, entities: E, attributes: A) -> Result<BTreeMap<Entid, ValueRc<StructuredMap>>>
+    fn pull_attributes_for_entities<E, A>(&self, entities: E, attributes: A) -> TransactionResult<BTreeMap<Entid, ValueRc<StructuredMap>>>
     where E: IntoIterator<Item=Entid>,
           A: IntoIterator<Item=Entid> {
         self.conn.pull_attributes_for_entities(&self.sqlite, entities, attributes)
     }
 
-    fn pull_attributes_for_entity<A>(&self, entity: Entid, attributes: A) -> Result<StructuredMap>
+    fn pull_attributes_for_entity<A>(&self, entity: Entid, attributes: A) -> TransactionResult<StructuredMap>
     where A: IntoIterator<Item=Entid> {
         self.conn.pull_attributes_for_entity(&self.sqlite, entity, attributes)
     }
@@ -249,11 +259,11 @@ mod tests {
         ValueType,
     };
 
-    use ::entity_builder::{
+    use mentat_transaction::entity_builder::{
         BuildTerms,
     };
 
-    use ::query::{
+    use mentat_transaction::query::{
         PreparedQuery,
     };
 
