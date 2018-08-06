@@ -75,7 +75,6 @@ matrix:
         # Create standalone NDKs
         - >
           ./scripts/create_standalone_ndk.sh &&
-          mkdir ./.cargo &&
           cp cargo-config.toml ./.cargo/config || travis_terminate 1
         - >
           cargo build -p mentat_ffi --target aarch64-linux-android --release &&
