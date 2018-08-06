@@ -36,9 +36,9 @@ create_ndk() {
     "$MAKER" --api "$2" --arch "$1" --install-dir "NDK/$1"
 }
 
-create_ndk arm64 21
-create_ndk arm 14
-create_ndk x86 14
+create_ndk arm64 24
+create_ndk arm 24
+create_ndk x86 24
 
 echo 'Updating cargo-config.toml...'
 

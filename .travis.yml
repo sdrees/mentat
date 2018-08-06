@@ -71,8 +71,10 @@ matrix:
         # install rustup & cargo
         - curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
         - source $HOME/.cargo/env
+        - ls -la /usr/local/share/
         # make standalone NDK
         - ./scripts/create_standalone_ndk.sh && cp cargo-config.toml ./.cargo/config || travis_terminate 1
+        - echo $ANDROID_NDK_HOME
         - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         - cargo build --target aarch64-linux-android --release
       before_script:
