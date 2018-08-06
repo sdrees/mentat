@@ -74,7 +74,7 @@ matrix:
       script:
         # Create standalone NDKs
         - >
-          ./create-ndk-standalone.sh &&
+          ./scripts/create-ndk-standalone.sh &&
           mkdir ./.cargo &&
           cp cargo-config.toml ./.cargo/config || travis_terminate 1
         - >
