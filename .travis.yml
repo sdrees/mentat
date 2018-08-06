@@ -69,11 +69,11 @@ matrix:
         - echo no | avdmanager create avd --force -n test -k "system-images;android-24;google_apis;armeabi-v7a"
         - $ANDROID_HOME/emulator/emulator -avd test -engine classic -no-window -camera-back none -camera-front none -selinux permissive -verbose -qemu -m 512 &
         # install rustup & cargo
-        - curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable --no-modify-path -y
+        - curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
         - source $HOME/.cargo/env
-        - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         # make standalone NDK
         - ./scripts/create_standalone_ndk.sh && cp cargo-config.toml ./.cargo/config || travis_terminate 1
+        - rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android
         - cargo build --target aarch64-linux-android --release
       before_script:
         # Start adbd, wait for device connected and show android serial to avoid heavy tasks in parallel
